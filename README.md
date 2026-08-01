@@ -105,6 +105,26 @@ Organizer.restock({0x0001}, 50, bagPath)
 ```
 
 
+Have different loadouts for different character:
+```lua
+local CharSerials = {
+    MyMage = 0x0012312, -- SerialId of your mage
+    MyDexer = 0x123123 --- Serial of dexer
+}
+-- Common restocking
+Organizer.restock({0x0001, 0x123123, 0x42342, }, 50)
+Organizer.restock({0x0024}, 10)
+-- Char specific
+if Player.Serial == CharSerials.MyDexer then
+    Organizer.restock({0x00444}, 100)
+elseif Player.Serial == CharSerials.MyMage then
+    Organizer.restock({0x002323, 0x03222}, 50)
+    Organizer.restock({0x002555}, 24)
+end 
+```
+
+
+
 ### Debugging 
 ```lua
 DEBUG = true
