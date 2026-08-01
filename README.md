@@ -27,9 +27,14 @@ Copy Settings-EXAMPLE.lua and name it Settings.lua and fill in the values explai
 
 ### Usage
 
+Create your new script or update an old one.
+
+Idea is that you import the organizer into your scripts, so you can
+use it wherever you like
+
 #### Organizer
 
-restock function only supports filling mode currently.
+NOTE: Restock function only supports filling mode currently.
 
 In your scrips do:
 
@@ -75,6 +80,38 @@ local ingotType = 0x1BF2
 Organizer.restock({ingotType}, 32, nil, 0)
 ```
 
+Restock from a sub container
+```lua
+local Organizer = Import('Organizer')
+local mainBag = 0x00001
+local secondBag = 0x00002
+local bagToRestockFrom = 0x00003
+
+--- Remember the last bag is the container with the items
+local bagPath = {mainBag, secondBag, bagToRestockFrom}
+
+Organizer.restock({0x0001}, 50, bagPath)
+```
+
+Have different loadouts for different character:
+```lua
+local Organizer = Import('Organizer')
+local CharSerials = {
+    MyMage = 0x0012312, -- SerialId of your mage
+    MyDexer = 0x123123 --- Serial of dexer
+}
+-- Common restocking
+Organizer.restock({0x0001, 0x123123, 0x42342, }, 50)
+Organizer.restock({0x0024}, 10)
+-- Char specific
+if Player.Serial == CharSerials.MyDexer then
+    Organizer.restock({0x00444}, 100)
+elseif Player.Serial == CharSerials.MyMage then
+    Organizer.restock({0x002323, 0x03222}, 50)
+    Organizer.restock({0x002555}, 24)
+end 
+```
+
 Offloading:
 ```lua
 local Organizer = Import('Organizer')
@@ -98,41 +135,6 @@ local Organizer = Import('Organizer')
 local spesificContainer = 0x12312312
 Organizer.offload({0x001}, 5, spesificContainer)
 ```
-
-Restock from a sub container
-```lua
-local Organizer = Import('Organizer')
-local mainBag = 0x00001
-local secondBag = 0x00002
-local bagToRestockFrom = 0x00003
-
---- Remember the last bag is the container with the items
-local bagPath = {mainBag, secondBag, bagToRestockFrom}
-
-Organizer.restock({0x0001}, 50, bagPath)
-```
-
-
-Have different loadouts for different character:
-```lua
-local Organizer = Import('Organizer')
-local CharSerials = {
-    MyMage = 0x0012312, -- SerialId of your mage
-    MyDexer = 0x123123 --- Serial of dexer
-}
--- Common restocking
-Organizer.restock({0x0001, 0x123123, 0x42342, }, 50)
-Organizer.restock({0x0024}, 10)
--- Char specific
-if Player.Serial == CharSerials.MyDexer then
-    Organizer.restock({0x00444}, 100)
-elseif Player.Serial == CharSerials.MyMage then
-    Organizer.restock({0x002323, 0x03222}, 50)
-    Organizer.restock({0x002555}, 24)
-end 
-```
-
-
 
 ### Debugging 
 ```lua
