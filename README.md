@@ -1,11 +1,12 @@
 # uosagas scripts
 
 ## Dependencies
-Organizer.lua:
+Organizer: -- To use the organizer you need these files
+- Organizer.lua
 - Utils.lua
 - Colors.lua
 - Logger.lua
-- Settings.lua
+- Settings.lua -- rename Settings-EXAMPLE.lua to Settings.lua and fill inn values
 
 ## SETUP
 
@@ -28,7 +29,7 @@ Copy Settings-EXAMPLE.lua and name it Settings.lua and fill in the values explai
 
 #### Organizer
 
-restock functino only supports filling mode currently.
+restock function only supports filling mode currently.
 
 In your scrips do:
 
@@ -43,7 +44,7 @@ local typesToRestock = {mandrakeRootType, blackPearlType}
 
 local fillAmount = 12
 
-Organizer.restock(graphicsToRestock, fillAmount)
+Organizer.restock(typesToRestock, fillAmount)
 ```
 
 Can also inline everything:
@@ -110,6 +111,6 @@ DEBUG = true
 ---
 --- ****  YOUR CODE HERE *********
 --- 
---- rememebr to set DEBUG = false at end, or else it will stay true until you close your client
+--- remember to set DEBUG = false at end, or else it will stay true until you close your client
 DEBUG = false
 ```
