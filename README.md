@@ -49,17 +49,20 @@ Organizer.restock(typesToRestock, fillAmount)
 
 Can also inline everything:
 ```lua
+local Organizer = Import('Organizer')
 Organizer.restock({0x0F86, 0x0F7A}, 12)
 ```
 
 Restock from spesific container
 ```lua
+local Organizer = Import('Organizer')
 local specialContainerId = 123578834
 Organizer.restock({0x0F86, 0x0F7A}, 12, specialContainerId)
 ```
 
 Restock special hue (shadow ingots) from default container:
 ```lua
+local Organizer = Import('Organizer')
 local ingotType = 0x1BF2
 local shadowIngotHue = 0x0966
 Organizer.restock({ingotType}, 10, nil, shadowIngotHue)
@@ -67,12 +70,14 @@ Organizer.restock({ingotType}, 10, nil, shadowIngotHue)
 
 Restock regular ingots (No colored ingot) from default container. Use hue = 0
 ```lua
+local Organizer = Import('Organizer')
 local ingotType = 0x1BF2
 Organizer.restock({ingotType}, 32, nil, 0)
 ```
 
 Offloading:
 ```lua
+local Organizer = Import('Organizer')
 local itemsToOffload = {0x1BF2, 0x0423}
 local numberOfItemsToKeepInInventory
 Organizer.offload(itemsToOffload, numberOfItemsToKeepInInventory)
@@ -81,6 +86,7 @@ Organizer.offload(itemsToOffload, numberOfItemsToKeepInInventory)
 offload different values, call it multiple times
 
 ```lua
+local Organizer = Import('Organizer')
 Organizer.offload({0x001, 0x0002}, 5)
 Organizer.offload({0x003}, 10)
 Organizer.offload({0x007}, 15)
@@ -88,12 +94,14 @@ Organizer.offload({0x007}, 15)
 
 Offload to non default container
 ```lua
+local Organizer = Import('Organizer')
 local spesificContainer = 0x12312312
 Organizer.offload({0x001}, 5, spesificContainer)
 ```
 
 Restock from a sub container
 ```lua
+local Organizer = Import('Organizer')
 local mainBag = 0x00001
 local secondBag = 0x00002
 local bagToRestockFrom = 0x00003
@@ -107,6 +115,7 @@ Organizer.restock({0x0001}, 50, bagPath)
 
 Have different loadouts for different character:
 ```lua
+local Organizer = Import('Organizer')
 local CharSerials = {
     MyMage = 0x0012312, -- SerialId of your mage
     MyDexer = 0x123123 --- Serial of dexer
