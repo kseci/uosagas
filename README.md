@@ -18,7 +18,7 @@ is dependent on one another.
 See on top of the files, which file it Imports.
 local Logger = Import('Logger') <-- Needs Logger.lua
 
-Or check the dependency list below if its updated
+Or check the dependency list above.
 
 ### 2. Copy Settings example
 
