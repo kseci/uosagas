@@ -153,7 +153,7 @@ local Organizer = Import('Organizer')
 SERVER_LATENCY = 100 -- SET THIS TO YOUR LATENCY (PING) TO THE SERVER. DEFAULT IS 200!!
 ```
 #### Restocking examples
-
+NB! For a full loadout per char script. Look at [loadout-EXAMPLE](loadout-EXAMPLE.lua)
 
 Simple restock from root of a container to you main bag
 ```lua
