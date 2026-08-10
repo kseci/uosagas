@@ -1,6 +1,6 @@
 --- Organizer.lua
 --- @author Kalen
---- @version 1.0.1
+--- @version 2.0.0
 --- @description
 --- Handles item organization tasks:
 --- - restocking requested item types from configured containers
@@ -8,29 +8,14 @@
 --- - moving items between containers
 --- 
 --- CHANGELOG:
+--- 2.0.0 - Refactored restock function to support nested bags and added options for fill, hue, and target bag.
+---         Usage of Organizer.restock is fully standalone lib now, function does not require a Settings.lua anymore 
+---         and containerserial of source are required.
 --- 1.0.1 - Introduced beta test (restock2) for nested bag support and no Settings.lua needed.
 --- 1.0.0 - First release
 --- 
---- Requires:
---- Logger.lua, Utils.lua, and Settings.lua (Personal file) to be imported in the script that uses this module.
---- 
 --- Usage:
---- local Organizer = Import('Organizer')
---- Organizer.restock({0x0F7A, 0x0F7B}, 10) -- Restock 10 of each type from the main restock containerSerial specified in Settings.MainRestockContainerId
---- 
---- Organizer.restock({0x0F7A, 0x0F7B}, 10, 0x4422A028) -- Restock 10 of each type from a specific containerSerial
---- 
---- Organizer.restock({0x0F7A, 0x0F7B}, 10, {0x4422A028, 0x44DF8A82}) -- Restock 10 of each type from a list of containers (will open them in order). Last one should be the container to restock from.
----
---- Organizer.restock({0x0F7A, 0x0F7B}, 10, nil, 0x0000) -- Restock 10 of each type from the main restock containerSerial, but only items with hue 0x0000
----
---- Organizer.offload({0x0F7A, 0x0F7B}, 5) -- Offload all of each type, keeping 5 in backpackCount
---- 
---- Organizer.offload({0x0F7A, 0x0F7B}, 0) -- Offload all of each type, keeping 0 in backpackCount
---- 
---- Organizer.offload({0x0F7A, 0x0F7B}, 5, 0x4422A028) -- Offload all of each type, keeping 5 in backpackCount, to a specific containerSerial 
---- 
---- For different amount just call the Organizer.offload() or Organizer.restock() again with the new amount for another typeId/graphicId.
+--- Look at Organizer-REDME.md for usage instructions and examples.
 
 ---@type UtilsModule
 -- ===== BEGIN Utils =====
@@ -318,8 +303,8 @@ Settings = Settings
 ---@field targetBag? NestedBag -- Default: Your main backpack
 
 ---@class OrganizerModule
----@field restock fun(types: integer[], totalAmountToFill: integer, containerIdOverride: integer|integer[]|nil, hues: integer|nil)
----@field restock2 fun (types: integer|integer[], amount: integer, sources: integer|integer[]|NestedBag|NestedBag[], options: RestockOptions)
+---@field restockLegacy fun(types: integer[], totalAmountToFill: integer, containerIdOverride: integer|integer[]|nil, hues: integer|nil)
+---@field restock fun (types: integer|integer[], amount: integer, sources: integer|integer[]|NestedBag|NestedBag[], options?: RestockOptions)
 ---@field offload fun(types: integer[], keepAmount: integer, containerIdOverride: integer|nil)
 ---@field restockItem fun(type: integer, amount: integer, containerIdOverride: integer|nil, hues: integer|nil)
 ---@field moveItem fun(item: table, amount: integer, containerId: integer)
@@ -442,7 +427,7 @@ local function openAllContainersIfNotInMemoryOrHasZeroItems(nestedBag)
 end
 
 
-function Organizer.restock(types, totalAmountToFill, containerIdOverride, hues)
+function Organizer.restockLegacy(types, totalAmountToFill, containerIdOverride, hues)
     local containerId = Settings.MainRestockContainerId
     if containerIdOverride ~= nil then
         if type(containerIdOverride) == 'table' then
@@ -485,7 +470,7 @@ function Organizer.restock(types, totalAmountToFill, containerIdOverride, hues)
     end
 end
 
-function Organizer.restock2(types, amount, source, options)
+function Organizer.restock(types, amount, source, options)
     local targetBagPath = options and options.targetBag and options.targetBag.path or {}
     local targetBagSerial = options and options.targetBag and options.targetBag.serial or nil
     if not isTableOfNumbers(targetBagPath) then
