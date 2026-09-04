@@ -29,6 +29,7 @@
 ---@field setTimeout fun(delay: integer, callback: fun())
 ---@field runTimers fun()
 ---@field contains fun(list: table, value: any): boolean
+---@field getTableValues fun(t: table): table
 ---@field excludeContainers fun(list: table, containerIds: integer[]): table
 ---@field filterByRootContainers fun(list: table, containerIds: integer[]): table
 ---@field filterByType fun(list: table, typeToFilterBy: string): table
@@ -36,6 +37,9 @@
 ---@field filterByContainers fun(list: table, containerIds: integer[]): table
 ---@field findByProperty fun(list: table, key: string, value: any): table|nil
 ---@field getTotalAmountOfItems fun(items: table): integer
+---@field isAnyCountBelow fun(graphicList: table, threshold: integer): boolean
+---@field isNumberArray fun(t: table): boolean
+---@field mergeLists fun(...: table): table
 
 ---@type LoggerModule
 -- ===== BEGIN Logger =====
@@ -168,6 +172,23 @@ function Utils.runTimers()
     end
 end
 
+function Utils.isAnyCountBelow(graphicList, threshold)
+    for _, graphic in ipairs(graphicList) do
+        if Items.CountType(graphic) < threshold then
+            return true
+        end
+    end
+    return false
+end
+
+function Utils.getTableValues(t)
+    local values = {}
+    for _, v in pairs(t) do
+        table.insert(values, v)
+    end
+    return values
+end
+
 function Utils.contains(list, value)
     for _, v in ipairs(list) do
         if v == value then
@@ -191,6 +212,37 @@ function Utils.excludeContainers(list, containerIds)
         end
     end
     return filteredList
+end
+
+function Utils.mergeLists(...)
+    local mergedList = {}
+    for i = 1, select('#', ...) do
+        local list = select(i, ...)
+        for _, item in ipairs(list) do
+            table.insert(mergedList, item)
+        end
+    end
+    return mergedList
+end
+
+function Utils.isNumberArray(t)
+    if type(t) ~= "table" then return false end
+
+    local count = 0
+    for k, v in pairs(t) do
+        count = count + 1
+        -- If any key is not a positive integer, or any value is not a number, it's not a pure number array
+        if type(k) ~= "number" or k ~= math.floor(k) or k < 1 or type(v) ~= "number" then
+            return false
+        end
+    end
+
+    -- Optional: ensure keys are sequential (1 to count)
+    for i = 1, count do
+        if t[i] == nil then return false end
+    end
+ 
+    return count > 0
 end
 
 function Utils.filterByRootContainers(list, containerIds)
@@ -302,10 +354,16 @@ Settings = Settings
 ---@field hue? number -- Default: all hues
 ---@field targetBag? NestedBag -- Default: Your main backpack
 
+---@class OffloadOptions
+---@field keepAmount integer -- Default: 0
+---@field hue? number -- Default: all hues
+---@field containerId integer|nil -- Default: nil
+
 ---@class OrganizerModule
 ---@field restockLegacy fun(types: integer[], totalAmountToFill: integer, containerIdOverride: integer|integer[]|nil, hues: integer|nil)
 ---@field restock fun (types: integer|integer[], amount: integer, sources: integer|integer[]|NestedBag|NestedBag[], options?: RestockOptions)
----@field offload fun(types: integer[], keepAmount: integer, containerIdOverride: integer|nil)
+---@field offloadLegacy fun(types: integer[], keepAmount: integer, containerIdOverride: integer|nil)
+---@field offload fun (types: integer|integer[], target: integer|NestedBag, options?: OffloadOptions)
 ---@field restockItem fun(type: integer, amount: integer, containerIdOverride: integer|nil, hues: integer|nil)
 ---@field moveItem fun(item: table, amount: integer, containerId: integer)
 ---@field moveToContainer fun(item: table, containerId: integer, amount: integer|nil)
@@ -316,12 +374,17 @@ local Organizer = {}
 
 local SERVER_GCD = 500
 if not SERVER_LATENCY then
-    SERVER_LATENCY = 200
+    SERVER_LATENCY = 60
 end
 
 local function gcdPause()
     Pause(SERVER_GCD + SERVER_LATENCY)
 end
+
+local IGNORED_OFFLOADING_ITEMS = {
+    0x4BE9DC6F, -- PEACE DAGGER
+    0x4BE9DCE6, -- DIDDY DAGGER
+}
 
 local function isInMemory(serial)
     if serial == nil then
@@ -332,6 +395,27 @@ local function isInMemory(serial)
     return item ~= nil
 end
 
+local function getRootBags(bag)
+    if type(bag) == nil then
+        Logger.warn("Organizer: getRootBag called with nil bag.")
+        return nil
+    end
+    if type(bag) == 'number' then
+        return {bag}
+    elseif Utils.isNumberArray(bag) then
+        return bag
+    elseif type(bag) == "table" and bag.path and #bag.path > 0 then
+        return {bag.path[1]}
+    elseif type(bag) == "table" and bag.serial then
+        return {bag.serial}
+    elseif type(bag) == "number" then
+        return {bag}
+    else
+        Logger.warn("Organizer: getRootBag called with invalid bag.")
+        return nil
+    end
+end
+
 local function getBackpackCount(graphic, hue)
     local count = 0
     if type(hue) == "number" then
@@ -340,6 +424,23 @@ local function getBackpackCount(graphic, hue)
         count = Items.CountType(graphic)
     end
     return count
+end
+
+local function removeBySerials(items, serialsToRemove)
+    local filteredItems = {}
+    for _, item in ipairs(items) do
+        local shouldRemove = false
+        for _, serial in ipairs(serialsToRemove) do
+            if item.Serial == serial then
+                shouldRemove = true
+                break
+            end
+        end
+        if not shouldRemove then
+            table.insert(filteredItems, item)
+        end
+    end
+    return filteredItems
 end
 
 local function convertSourcesInputToNestedBagList(sources)
@@ -400,6 +501,51 @@ local function openAllBagsInPath(path)
     end
 end
 
+local function isAnyContainerAccessible(serials)
+    for _, serial in ipairs(serials) do
+        local item = Items.FindBySerial(serial)
+        if item ~= nil and item.Distance ~= nil and item.Distance <= 2 then
+            return true
+        end
+    end
+    return false
+end
+
+local function printInaccessibleBagsError(method, types, serials)
+    local bagType = method == "offload" and "target" or "source"
+    Logger.warn("Organizer."..tostring(method)..": all "..bagType.." bags '".. table.concat(serials, ', ') .."' are out of reach for restocking '".. table.concat(types, ', ') .. "'. Stopping..")
+end
+
+local function offloadGraphic(typeToOffload, keepAmount, hue, containerId)
+        Logger.debug('Offloading typeid: '..tostring(typeToOffload))
+        local amountMoved = 0
+        local allItemsNearbyOfType = Items.FindByFilter({graphics={typeToOffload}, hues={hue}})
+        local allItemsNearbyOfTypeThatIsNotLayered = Utils.filterNonLayeredItems(allItemsNearbyOfType)
+        -- Only keep the items in players backpack (bank is included, be warned)
+        local allItemsOfTypeOnPlayerNotLayered = Utils.filterByRootContainers(allItemsNearbyOfTypeThatIsNotLayered, {Player.Serial})
+        local allItemsOfTypeThatShouldBeMoved = Utils.excludeContainers(allItemsOfTypeOnPlayerNotLayered, Settings.IgnoredOffloadingContainers)
+        allItemsOfTypeThatShouldBeMoved = removeBySerials(allItemsOfTypeThatShouldBeMoved, IGNORED_OFFLOADING_ITEMS)
+        local currentAmountOfItems = Utils.getTotalAmountOfItems(allItemsOfTypeThatShouldBeMoved)
+
+        local OFFLOAD_AMOUNT = currentAmountOfItems - keepAmount
+        while amountMoved < OFFLOAD_AMOUNT do
+            for _, stackOfItemType in ipairs(allItemsOfTypeThatShouldBeMoved) do
+                local amountToMove = OFFLOAD_AMOUNT - amountMoved
+                local itemCountForItem = 1
+                if stackOfItemType.Amount ~= nil then
+                    itemCountForItem = stackOfItemType.Amount
+                end
+                if amountToMove >= stackOfItemType.Amount then
+                    Organizer.moveItem(stackOfItemType, itemCountForItem, containerId)
+                    amountMoved = amountMoved + itemCountForItem
+                elseif amountToMove > 0 and amountToMove < itemCountForItem then
+                    Organizer.moveItem(stackOfItemType, amountToMove, containerId)
+                    amountMoved = amountMoved + amountToMove
+                end
+            end
+        end
+end
+
 local function openAllContainersIfNotInMemoryOrHasZeroItems(nestedBag)
     local containerPath = {}
     for _, serial in ipairs(nestedBag.path or {}) do
@@ -418,7 +564,7 @@ local function openAllContainersIfNotInMemoryOrHasZeroItems(nestedBag)
         return
     end
 
-   if not isBagInMemoryAndContainsItems(nestedBag.serial) then
+   if #containerPath > 0 or not isBagInMemoryAndContainsItems(nestedBag.serial) then
         Logger.debug("Organizer: Target bag "..tostring(nestedBag.serial).." has zero items. Opening all containers in path.")
         openAllBagsInPath(containerPath)
     else
@@ -471,6 +617,17 @@ function Organizer.restockLegacy(types, totalAmountToFill, containerIdOverride, 
 end
 
 function Organizer.restock(types, amount, source, options)
+    if type(types) == 'number' then
+        types = {types}
+    elseif not isTableOfNumbers(types) then
+        Logger.error('Organizer.restock: types must be a number or a table of numbers.')
+        return
+    end
+    local rootBags = getRootBags(source)
+    if rootBags and not isAnyContainerAccessible(rootBags) then
+        printInaccessibleBagsError("restock", types, rootBags)
+        return
+    end
     local targetBagPath = options and options.targetBag and options.targetBag.path or {}
     local targetBagSerial = options and options.targetBag and options.targetBag.serial or nil
     if not isTableOfNumbers(targetBagPath) then
@@ -480,18 +637,45 @@ function Organizer.restock(types, amount, source, options)
     if targetBagSerial ~= nil then
         openAllContainersIfNotInMemoryOrHasZeroItems({serial = targetBagSerial, path = targetBagPath})
     end
-    if type(types) == 'number' then
-        types = {types}
-    elseif not isTableOfNumbers(types) then
-        Logger.error('Organizer.restock: types must be a number or a table of numbers.')
-        return
-    end
     for _, type in ipairs(types) do
         restockGraphic(type, amount, source, options)
     end
 end
 
-function Organizer.offload(types, keepAmount, containerIdOverride)
+function Organizer.offload(types, targetBag, options)
+    if type(types) == 'number' then
+        types = {types}
+    elseif not isTableOfNumbers(types) then
+        Logger.error('Organizer.offload: types must be a number or a table of numbers.')
+        return
+    end
+    local rootBagSerials = getRootBags(targetBag)
+    if not isAnyContainerAccessible(rootBagSerials) then
+        printInaccessibleBagsError("offload", types, rootBagSerials)
+        return
+    end
+    if type(targetBag) == 'number' then
+        targetBag = {serial = targetBag, path = {}}
+    end
+    Logger.info('Serial: '..tostring(targetBag.serial)..'')
+    local targetBagPath = targetBag and targetBag.path or {}
+    local targetBagSerial = targetBag and targetBag.serial or nil
+    local keepAmount = options and options.keepAmount or 0
+    local hue = options and options.hue or nil
+    if not isTableOfNumbers(targetBagPath) then
+        Logger.error("Organizer: options.targetBagPath is not a table of numbers. It should be a list of container serials (numbers) leading to the target container.")
+    end
+    Logger.debug('Organizer.offload: Opening containers in path: '..table.concat(targetBagPath, ', '))
+    if targetBagSerial ~= nil then
+        openAllContainersIfNotInMemoryOrHasZeroItems({serial = targetBagSerial, path = targetBagPath})
+    end
+    local typesAsOnlyNumbers = Utils.filterByType(types, 'number')
+    for _, type in ipairs(typesAsOnlyNumbers) do
+        offloadGraphic(type, keepAmount, hue, targetBagSerial)
+    end
+end
+
+function Organizer.offloadLegacy(types, keepAmount, containerIdOverride)
     local containerId = Settings.MainOffloadContainerId
     if containerIdOverride ~= nil then
         containerId = containerIdOverride
@@ -505,6 +689,7 @@ function Organizer.offload(types, keepAmount, containerIdOverride)
         -- Only keep the items in players backpack (bank is included, be warned)
         local allItemsOfTypeOnPlayerNotLayered = Utils.filterByRootContainers(allItemsNearbyOfTypeThatIsNotLayered, {Player.Serial})
         local allItemsOfTypeThatShouldBeMoved = Utils.excludeContainers(allItemsOfTypeOnPlayerNotLayered, Settings.IgnoredOffloadingContainers)
+        allItemsOfTypeThatShouldBeMoved = removeBySerials(allItemsOfTypeThatShouldBeMoved, IGNORED_OFFLOADING_ITEMS)
         local currentAmountOfItems = Utils.getTotalAmountOfItems(allItemsOfTypeThatShouldBeMoved)
 
         local OFFLOAD_AMOUNT = currentAmountOfItems - keepAmount
