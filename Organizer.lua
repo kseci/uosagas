@@ -339,7 +339,8 @@ local Settings = {
     IgnoredOffloadingContainers = {
         0x4AB56EDD, -- Sara
         0x4AAF0490, -- Peace
-        0x4B953E76 -- Diddy
+        0x4B953E76, -- Diddy
+        0x4C0E3B71, -- DexterKing
     }
 }
 Settings = Settings
@@ -621,6 +622,12 @@ function Organizer.restock(types, amount, source, options)
         types = {types}
     elseif not isTableOfNumbers(types) then
         Logger.error('Organizer.restock: types must be a number or a table of numbers.')
+        return
+    end
+    local isFillMode = options and options.fill or true
+    local isAlreadyFilled = isFillMode and not Utils.isAnyCountBelow(types, amount) or false
+    if isAlreadyFilled then
+        Logger.info("Organizer.restock: " .. table.concat(types, ', ') .. ' does not need restock')
         return
     end
     local rootBags = getRootBags(source)
